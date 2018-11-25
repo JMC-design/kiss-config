@@ -1,14 +1,23 @@
-(defpackage :kiss.config
+(defpackage :kiss-config
   (:use :cl :split-sequence)
   (:export #:cel
 	   #:cel-meta
 	   #:cel-set
+	   #:process-cels
 	   #:object
 	   #:config
+	   #:config-palettes
+	   #:config-border
+	   #:config-playfield
+	   #:config-cels
+	   #:config-commands
+	   #:config-sets
+	   #:config-location	   
 	   #:process-raw-config
 	   #:cel->image
-	   #:palettes))
-(in-package :kiss.config)
+	   #:palettes
+	   #:load-palette))
+(in-package :kiss-config)
 
 ;;;; READ BIT UTILS
 
