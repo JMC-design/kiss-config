@@ -88,6 +88,13 @@
   in-sets
   alpha)
 
+(defmethod print-object ((cel cel-meta) stream)
+  "Prints out CEL-META in a format suitable to write to CNF files if *PRINT-READABLY* is nil."
+  (if *print-readably*
+      (call-next-method)
+      (with-slots (id fix name pen-group in-sets alpha) cel
+	(format stream "#~a~@[.~D~] ~a ~@[[*~D~] ~@[:~{~a ~}~]~@[;T%~D~]" id fix name pen-group in-sets alpha))))
+
 ;;fixme: parse beyond the name
 (defun parse-cel (stream)
   (let ((meta (make-cel-meta  )))
