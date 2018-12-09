@@ -1,8 +1,25 @@
 (defpackage :kiss-config
   (:use :cl :split-sequence)
   (:export #:cel
+	   #:cel-type
+	   #:cel-bpp
+	   #:cel-width
+	   #:cel-height
+	   #:cel-x-offset
+	   #:cel-y-offset
+	   #:cel-data
 	   #:cel-meta
+	   #:cel-plist
+	   #:cel-meta
+	   #:cel-meta-id
+	   #:cel-meta-fix
+	   #:cel-meta-name
+	   #:cel-meta-pen-group
+	   #:cel-meta-in-sets
+	   #:cel-meta-alpha
 	   #:cel-set
+	   #:cel-set-palette-group
+	   #:cel-set-locations
 	   #:process-cels
 	   #:object
 	   #:config
@@ -16,7 +33,9 @@
 	   #:process-raw-config
 	   #:cel->image
 	   #:palettes
-	   #:load-palette))
+	   #:palettes-palettes
+	   #:load-palette
+	   #:cel->argb32))
 (in-package :kiss-config)
 
 ;;;; READ BIT UTILS
@@ -42,6 +61,7 @@
   (read-line stream nil nil))
 ;; The problem with old style lha is they uppercase characters. Shouldn't make this
 ;; machinery exploit this flaw by using read this way.
+;; why not? uppercase all files after unpacking and have all machinery use uppercase.
 
 ;;;; Config processing
 
@@ -59,7 +79,7 @@
 
 (defun process-raw-config (pathname)
   "Takes a raw FKISS CNF file and returns a CONFIG STRUCT."
-  (with-open-file (stream pathname)
+  (with-open-file (stream pathname :external-format :gbk)
     (let ((name (pathname-name pathname))
 	  (location (make-pathname :directory (pathname-directory pathname)))
 	  (commands)
@@ -79,7 +99,8 @@
 			   (push (parse-command stream) commands)                        ; commands
 			   (push (read-line stream nil) comments)))                      ; comments
 		  (#\# (push (parse-cel stream) cels))                                   ; cels
-		  (#\%  (push (remove #\return (read-line stream)) palettes))		 ; palettes  
+		  (#\%  (push (read stream) palettes) (read-line stream);read name, discard comments
+			) ; palettes  
 		  (#\[ (setf border (parse-integer (read-line stream) :junk-allowed t))) ; border
 		  (#\( (setf playfield (parse-xy stream)))                               ; playfield   
 		  (#\$ (push (read-set stream) sets))	                                 ; sets 
@@ -197,13 +218,22 @@
 
 (defun read-cel-data (cel stream)
   "Returns pixel data from cel."
-  (let* ((width (cel-width cel))
+  (let* ((type (cel-type cel))
+	 (width (cel-width cel))
 	 (height (cel-height cel))
-	 (int-array (make-array `(,height ,width ) :element-type '(unsigned-byte 24))))
+	 (int-array (make-array `(,height ,width ) :element-type '(unsigned-byte 32))))	;wasting bits for convenience
     (file-position stream 32)
     (loop :for i :from 0 :below height :do
        (loop :for j :from 0 :below  width :do
-	  (setf (aref int-array i j ) (read-byte stream))))
+	  (case type
+	    (#x20 (setf (aref int-array i j ) (read-byte stream))) ;palette based
+	    (#x21 (let* ((r (read-byte stream)) ;cherry kiss
+			(g (read-byte stream))
+			(b (read-byte stream))
+			(a (read-byte stream))
+			(pixel (logior r (ash g 8)(ash b 16)(ash a 24))))
+		    (when (= a 0) (setf pixel 0))
+		    (setf (aref int-array i j) pixel ))))))
     int-array))
   
 (defun load-cel (filename meta)
@@ -263,10 +293,8 @@
     (process-palettes palette)
     palette))
 
-
-
 ;; X11 image stuff
-(defun cel->image (cel palette )
+(defun cel->image (cel palette)
   "Takes a cel and returns an Ximage made with given palette."
   (let* ((raw-data (cel-data cel))
 	 (data (make-array (array-dimensions raw-data) :element-type '(unsigned-byte 32))))
@@ -279,3 +307,13 @@
 		       :depth 24
 		       :bits-per-pixel 32
 		       :data data)))
+
+(defun cel->argb32 (cel palette)
+  "Takes a cel and returns an (width height) array of 32bit ARGB pixels."
+  (let* ((raw-data (cel-data cel))
+	 (data (make-array (array-dimensions raw-data) :element-type '(unsigned-byte 32))))
+    (loop for x from 0 :below (apply #'* (array-dimensions raw-data))
+       :do (let* ((pixel  (row-major-aref raw-data x))
+		  (pal-colour (row-major-aref palette pixel)))
+	     (setf (row-major-aref data x) (if (= pixel 0) 0 (logior #xff000000 pal-colour)))))
+    data))
